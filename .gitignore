@@ -3,4 +3,5 @@ __pycache__/
 venv/
 .env
 store.db
+store_*.db
 artifacts/

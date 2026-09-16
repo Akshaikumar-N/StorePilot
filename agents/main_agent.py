@@ -7,15 +7,15 @@ from langchain.prompts import PromptTemplate
 from db.database import get_db
 from tools.generate_docs import generate_invoice_pdf, generate_analysis_deck
 
-def get_agent_executor():
+def get_agent_executor(chat_id: str):
 
     llm = ChatGroq(
         model="openai/gpt-oss-120b",
-        temperature=0
+        temperature=0.0
     )
     
 
-    db = get_db()
+    db = get_db(chat_id)
     toolkit = SQLDatabaseToolkit(db=db, llm=llm, use_query_checker=False)
     
 

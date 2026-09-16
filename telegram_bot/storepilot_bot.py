@@ -11,7 +11,6 @@ from agents.main_agent import get_agent_executor
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-agent_executor = get_agent_executor()
 
 
 chat_histories = {}
@@ -34,6 +33,7 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
 
+        agent_executor = get_agent_executor(str(chat_id))
         result = agent_executor.invoke({
             "input": user_message,
             "chat_history": history

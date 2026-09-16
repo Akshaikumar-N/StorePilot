@@ -5,10 +5,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_URL = "sqlite:///store.db"
+def get_db_url(chat_id: str) -> str:
+    return f"sqlite:///store_{chat_id}.db"
 
-def init_db():
-    engine = create_engine(DB_URL)
+def init_db(chat_id: str):
+    engine = create_engine(get_db_url(chat_id))
     
     with engine.connect() as conn:
         conn.exec_driver_sql("""
@@ -58,26 +59,15 @@ def init_db():
         );
         """)
         
-        res = conn.exec_driver_sql("SELECT count(*) FROM products").scalar()
-        if res == 0:
-            conn.exec_driver_sql("""
-                INSERT INTO products (product_name, cost_price, mrp, stock, reorder_level, unit, gst_rate) VALUES
-                ('Aashirvaad Atta 5kg', 180, 200, 20, 5, 'packet', 5),
-                ('Tata Salt 1kg', 20, 24, 50, 10, 'packet', 5),
-                ('Amul Butter 100g', 45, 50, 30, 10, 'piece', 12),
-                ('Maggi 70g', 12, 14, 100, 20, 'packet', 18),
-                ('Sugar (Loose)', 38, 42, 50, 10, 'kg', 0)
-            """)
         conn.commit()
 
-def get_engine():
-    return create_engine(DB_URL)
+def get_engine(chat_id: str):
+    return create_engine(get_db_url(chat_id))
 
-def get_db() -> SQLDatabase:
-    """Returns a Langchain SQLDatabase instance."""
-    init_db()
-    return SQLDatabase.from_uri(DB_URL)
+def get_db(chat_id: str) -> SQLDatabase:
+    """Returns a Langchain SQLDatabase instance for the specific chat_id."""
+    init_db(chat_id)
+    return SQLDatabase.from_uri(get_db_url(chat_id))
 
 if __name__ == "__main__":
-    init_db()
-    print("Database initialized.")
+    print("Run this file with a chat_id to initialize. (e.g. init_db('123'))")
