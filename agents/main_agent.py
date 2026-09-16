@@ -10,7 +10,7 @@ from tools.generate_docs import generate_invoice_pdf, generate_analysis_deck
 def get_agent_executor(chat_id: str):
 
     llm = ChatGroq(
-        model="openai/gpt-oss-120b",
+        model="llama-3.1-70b-versatile",
         temperature=0.0
     )
     
