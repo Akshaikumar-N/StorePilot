@@ -22,15 +22,18 @@ def get_agent_executor(chat_id: str):
     tools = toolkit.get_tools() + [generate_invoice_pdf, generate_analysis_deck]
     
 
-    template = """You are a Supermarket Ops Agent running an Indian kirana store. 
+    template_str = """You are a Supermarket Ops Agent running an Indian kirana store. 
 You interact with the owner to manage stock, build bills, and handle credit_ledger (customer credit).
 You have access to a SQLite database. 
 
 Important Database Rules:
 1. `products` table: Has cost_price, mrp, stock, gst_rate. NEVER SELL IF STOCK < quantity. You must manually check stock before inserting a bill item. Update stock atomically.
-2. `bills` table: When finalizing a bill, insert into `bills` (get the bill_id) and then insert into `bill_items`.
+2. `bills` table: When finalizing a bill, insert into `bills` (get the bill_id) and then insert into `bill_items`. YOU MUST include `chat_id` = {current_chat_id} in your INSERT statement for bills!
 3. `credit_ledger` table: Track credit balances. If payment is 'khata' or 'credit', insert/update the customer's balance.
+4. When calling `generate_invoice_pdf` or `generate_analysis_deck`, you MUST pass `chat_id`="{current_chat_id}" as an argument!
+""".replace("{current_chat_id}", str(chat_id))
 
+    template = template_str + """
 To answer questions, you have access to the following tools:
 
 {tools}

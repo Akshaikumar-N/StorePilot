@@ -6,9 +6,9 @@ from db.database import get_engine
 from sqlalchemy import text
 
 @tool
-def generate_invoice_pdf(bill_id: int) -> str:
+def generate_invoice_pdf(bill_id: int, chat_id: str) -> str:
     """Generates a PDF invoice for a given bill ID and returns the local file path."""
-    engine = get_engine()
+    engine = get_engine(chat_id)
     
     with engine.connect() as conn:
         bill_res = conn.execute(text("SELECT * FROM bills WHERE id = :id"), {"id": bill_id}).fetchone()
@@ -66,9 +66,9 @@ def generate_invoice_pdf(bill_id: int) -> str:
     return f"PDF Invoice generated at: {filename}"
 
 @tool
-def generate_analysis_deck() -> str:
+def generate_analysis_deck(chat_id: str) -> str:
     """Generates a PPTX analysis deck of store sales and returns the file path."""
-    engine = get_engine()
+    engine = get_engine(chat_id)
     
     with engine.connect() as conn:
         bills = [b._mapping for b in conn.execute(text("SELECT * FROM bills")).fetchall()]
