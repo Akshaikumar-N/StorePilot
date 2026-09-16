@@ -1,0 +1,11 @@
+python-telegram-bot==21.1.1
+groq==0.9.0
+fpdf2==2.8.1
+python-pptx==1.0.1
+python-dotenv==1.0.1
+pydantic==2.8.2
+langchain
+langchain-groq
+langchain-community
+SQLAlchemy
+psycopg2-binary
