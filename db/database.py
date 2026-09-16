@@ -59,9 +59,36 @@ def init_db(chat_id: str):
         );
         """)
         
+        conn.exec_driver_sql("""
+        CREATE TABLE IF NOT EXISTS preferences (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        """)
+        
+        conn.exec_driver_sql("""
+        CREATE TABLE IF NOT EXISTS pending_bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            customer_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        
+        conn.exec_driver_sql("""
+        CREATE TABLE IF NOT EXISTS pending_bill_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pending_bill_id INTEGER,
+            product_name TEXT,
+            quantity REAL,
+            FOREIGN KEY(pending_bill_id) REFERENCES pending_bills(id)
+        );
+        """)
+        
         conn.commit()
 
 def get_engine(chat_id: str):
+    init_db(chat_id)
     return create_engine(get_db_url(chat_id))
 
 def get_db(chat_id: str) -> SQLDatabase:

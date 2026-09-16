@@ -1,68 +1,53 @@
 import os
-from langchain_community.agent_toolkits import SQLDatabaseToolkit
-from langchain_groq import ChatGroq
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain.prompts import PromptTemplate
-
-from db.database import get_db
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from tools.kirana_tools import (
+    add_new_product, receive_stock, check_stock, get_low_stock_items,
+    start_new_bill, add_item_to_bill, edit_bill_item, finalize_bill,
+    add_khata_credit, settle_khata_payment, check_khata_balance,
+    get_daily_sales, set_preference, get_preference
+)
 from tools.generate_docs import generate_invoice_pdf, generate_analysis_deck
 
 def get_agent_executor(chat_id: str):
 
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=0.0
+    llm = ChatOpenAI(
+        model="openai/gpt-oss-120b",
+        temperature=0.0,
+        api_key=os.getenv("GROQ_API_KEY"),
+        base_url="https://api.groq.com/openai/v1"
     )
     
-
-    db = get_db(chat_id)
-    toolkit = SQLDatabaseToolkit(db=db, llm=llm, use_query_checker=False)
+    tools = [
+        add_new_product, receive_stock, check_stock, get_low_stock_items,
+        start_new_bill, add_item_to_bill, edit_bill_item, finalize_bill,
+        add_khata_credit, settle_khata_payment, check_khata_balance,
+        get_daily_sales, set_preference, get_preference,
+        generate_invoice_pdf, generate_analysis_deck
+    ]
     
+    system_prompt = """You are a Supermarket Ops Agent running an Indian kirana store. 
+You interact with the owner to manage stock, build bills, and handle khata (customer credit).
 
-    tools = toolkit.get_tools() + [generate_invoice_pdf, generate_analysis_deck]
-    
-
-    template_str = """You are a Supermarket Ops Agent running an Indian kirana store. 
-You interact with the owner to manage stock, build bills, and handle credit_ledger (customer credit).
-You have access to a SQLite database. 
-
-Important Database Rules:
-1. `products` table: Has cost_price, mrp, stock, gst_rate. NEVER SELL IF STOCK < quantity. You must manually check stock before inserting a bill item. Update stock atomically.
-2. `bills` table: When finalizing a bill, insert into `bills` (get the bill_id) and then insert into `bill_items`. YOU MUST include `chat_id` = {current_chat_id} in your INSERT statement for bills!
-3. `credit_ledger` table: Track credit balances. If payment is 'khata' or 'credit', insert/update the customer's balance.
-4. When calling `generate_invoice_pdf` or `generate_analysis_deck`, you MUST pass `chat_id`="{current_chat_id}" as an argument!
+CRITICAL INSTRUCTIONS:
+- When calling ANY tool, you MUST pass `chat_id`="{current_chat_id}" as the first argument.
+- To create a bill:
+  1. Call `start_new_bill` to get a `pending_bill_id`.
+  2. Call `add_item_to_bill` for each item.
+  3. If they change their mind, use `edit_bill_item`.
+  4. Finally, call `finalize_bill` to deduct stock and generate the bill.
+- If a user asks "Which one?", or a request is ambiguous, ask them a clarifying question.
+- Memory: If a user sets a preference, save it using `set_preference`. Before making assumptions (like payment mode), you can check `get_preference`.
 """.replace("{current_chat_id}", str(chat_id))
 
-    template = template_str + """
-To answer questions, you have access to the following tools:
-
-{tools}
-
-To use a tool, please use the exact following format:
-```
-Thought: Do I need to use a tool? Yes
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-```
-
-When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:
-```
-Thought: Do I need to use a tool? No
-Final Answer: [your response here]
-```
-
-Begin!
-Previous conversation history:
-{chat_history}
-
-Question: {input}
-Thought:{agent_scratchpad}"""
-
-    prompt = PromptTemplate.from_template(template)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt + "\nPrevious conversation history:\n{chat_history}"),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ])
     
-
-    agent = create_react_agent(llm, tools, prompt)
+    agent = create_tool_calling_agent(llm, tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
     
     return agent_executor
