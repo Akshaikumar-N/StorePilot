@@ -1,13 +1,10 @@
 import os
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain.prompts import ChatPromptTemplate
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from tools.kirana_tools import (
-    add_new_product, receive_stock, check_stock, get_low_stock_items,
-    start_new_bill, add_item_to_bill, edit_bill_item, finalize_bill,
-    add_khata_credit, settle_khata_payment, check_khata_balance,
-    get_daily_sales, set_preference, get_preference
-)
+
+from db.database import get_db
 from tools.generate_docs import generate_invoice_pdf, generate_analysis_deck
 
 def get_agent_executor(chat_id: str):
@@ -18,36 +15,61 @@ def get_agent_executor(chat_id: str):
         api_key=os.getenv("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1"
     )
-    
-    tools = [
-        add_new_product, receive_stock, check_stock, get_low_stock_items,
-        start_new_bill, add_item_to_bill, edit_bill_item, finalize_bill,
-        add_khata_credit, settle_khata_payment, check_khata_balance,
-        get_daily_sales, set_preference, get_preference,
-        generate_invoice_pdf, generate_analysis_deck
-    ]
-    
-    system_prompt = """You are a Supermarket Ops Agent running an Indian kirana store. 
-You interact with the owner to manage stock, build bills, and handle khata (customer credit).
 
-CRITICAL INSTRUCTIONS:
-- When calling ANY tool, you MUST pass `chat_id`="{current_chat_id}" as the first argument.
-- To create a bill:
-  1. Call `start_new_bill` to get a `pending_bill_id`.
-  2. Call `add_item_to_bill` for each item.
-  3. If they change their mind, use `edit_bill_item`.
-  4. Finally, call `finalize_bill` to deduct stock and generate the bill.
-- If a user asks "Which one?", or a request is ambiguous, ask them a clarifying question.
-- Memory: If a user sets a preference, save it using `set_preference`. Before making assumptions (like payment mode), you can check `get_preference`.
+    db = get_db(chat_id)
+    # use_query_checker is disabled to prevent LLM hallucinations on validation
+    toolkit = SQLDatabaseToolkit(db=db, llm=llm, use_query_checker=False)
+
+    tools = toolkit.get_tools() + [generate_invoice_pdf, generate_analysis_deck]
+    
+    template_str = """You are a Supermarket Ops Agent running an Indian kirana store.
+You interact with the owner to manage stock, build bills, and handle customer credit (khata).
+You have access to a SQLite database representing the store's state.
+
+Important Database Schema & Rules:
+1. `products` (id, product_name, cost_price, mrp, stock, reorder_level, unit, gst_rate, hsn_code). 
+   - OVERSELL GUARD: NEVER SELL IF STOCK < quantity. You MUST manually query and check `stock` before adding an item to a bill.
+   - You must update stock atomically: e.g. `UPDATE products SET stock = stock - qty WHERE id = ?`.
+2. `pending_bills` & `pending_bill_items`: Use these tables for multi-turn bills. When a user adds items but hasn't finalized, store them here. Do NOT deduct stock until the bill is finalized.
+3. `bills` & `bill_items`: When a bill is finalized, move items from pending to here, AND deduct stock from `products`. Set `chat_id` = {current_chat_id}.
+4. `credit_ledger` (customer_name, balance): If a user buys on credit, add to their balance. If they pay, subtract from their balance.
+5. `preferences` (key, value): Use this to store memory across chats (e.g., default payment mode). Check this table when making assumptions.
+
+When finalizing a bill, calculate taxes correctly based on `gst_rate`.
+If a user request is ambiguous (e.g. "add atta" but there are multiple), ask a clarifying question.
+
+For PDF/PPTX generation, use `generate_invoice_pdf` or `generate_analysis_deck` with `chat_id`="{current_chat_id}".
 """.replace("{current_chat_id}", str(chat_id))
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt + "\nPrevious conversation history:\n{chat_history}"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    template = template_str + """
+To answer questions, you have access to the following tools:
+
+{tools}
+
+To use a tool, please use the exact following format:
+```
+Thought: Do I need to use a tool? Yes
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+```
+
+When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:
+```
+Thought: Do I need to use a tool? No
+Final Answer: [your response here]
+```
+
+Begin!
+Previous conversation history:
+{chat_history}
+
+Question: {input}
+Thought:{agent_scratchpad}"""
+
+    prompt = PromptTemplate.from_template(template)
     
-    agent = create_tool_calling_agent(llm, tools, prompt)
+    agent = create_react_agent(llm, tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
     
     return agent_executor
